@@ -75,7 +75,12 @@ plugins = ["pydantic.mypy"]
 module = "hypothesis"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "dlt"
+ignore_missing_imports = true
+
 [tool.deptry.per_rule_ignores]
+DEP001 = ["dlt"]
 DEP002 = ["polars", "requests"]
 
 [tool.pytest.ini_options]
