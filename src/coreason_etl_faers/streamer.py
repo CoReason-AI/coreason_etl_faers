@@ -73,6 +73,12 @@ def stream_faers_data(url: str, target_filename: str) -> Iterator[dict[str, Any]
                 yield row  # Yield single dict to let dlt handle batching
 
     finally:
+        # Ensure file handle is closed (e.g., if an exception occurred before explicit close)
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            tmp_zip.close()
+
         logger.debug(f"Cleaning up temporary file: {tmp_zip.name}")
         if os.path.exists(tmp_zip.name):
             os.unlink(tmp_zip.name)  # Cross-platform cleanup
