@@ -48,6 +48,18 @@ def execute_silver_transmutation_task(connection_uri: str) -> SilverManifoldMani
     logger.info("Extracting and transmuting DEMO manifold.")
     demo_df = extract_deduplicated_cases_task(connection_uri, "faers_bronze_demo")
 
+    if "data" in demo_df.columns and len(demo_df) > 0:
+        demo_df = demo_df.with_columns(
+            pl.col("data").str.json_path_match("$.caseid").alias("caseid"),
+            pl.col("data").str.json_path_match("$.patient_id").alias("patient_id"),
+            pl.col("data").str.json_path_match("$.event_dt").alias("event_dt"),
+        )
+
+    # If the columns missing, add them to avoid crash
+    for col in ["caseid", "patient_id", "event_dt"]:
+        if col not in demo_df.columns:
+            demo_df = demo_df.with_columns(pl.lit(None).cast(pl.String).alias(col))
+
     logger.info("Extracting and transmuting DRUG manifold.")
     drug_raw_df = extract_deduplicated_cases_task(connection_uri, "faers_bronze_drug")
 
@@ -60,11 +72,13 @@ def execute_silver_transmutation_task(connection_uri: str) -> SilverManifoldMani
         drug_raw_df = drug_raw_df.with_columns(
             pl.col("data").str.json_path_match("$.drugname").alias("drugname"),
             pl.col("data").str.json_path_match("$.caseid").alias("caseid"),
+            pl.col("data").str.json_path_match("$.role_cod").alias("role_cod"),
         )
 
-    # If the column missing, add it to avoid crash
-    if "drugname" not in drug_raw_df.columns:
-        drug_raw_df = drug_raw_df.with_columns(pl.lit(None).cast(pl.String).alias("drugname"))
+    # If the columns missing, add them to avoid crash
+    for col in ["drugname", "caseid", "role_cod"]:
+        if col not in drug_raw_df.columns:
+            drug_raw_df = drug_raw_df.with_columns(pl.lit(None).cast(pl.String).alias(col))
 
     drug_df = generate_coreason_ids(drug_raw_df)
 

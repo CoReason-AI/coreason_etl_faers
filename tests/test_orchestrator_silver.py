@@ -21,19 +21,21 @@ def test_execute_silver_transmutation_task_happy_path(mocker: MagicMock) -> None
     mock_extract = mocker.patch("coreason_etl_faers.orchestrator_silver.extract_deduplicated_cases_task")
 
     # Mock the return values of the extract function for demo, drug, reac
-    # Demo dataframe
-    demo_df = pl.DataFrame({"data": [json.dumps({"caseid": "1"})]})
+    # Demo dataframe needs a JSON string containing caseid, patient_id, event_dt
+    demo_df = pl.DataFrame({"data": [json.dumps({"caseid": "1", "patient_id": "P1", "event_dt": "2023-01-01"})]})
 
-    # Drug dataframe needs a JSON string containing drugname
-    drug_df = pl.DataFrame({"data": [json.dumps({"caseid": "1", "drugname": "Aspirin"})]})
+    # Drug dataframe needs a JSON string containing caseid, drugname, role_cod
+    drug_df = pl.DataFrame({"data": [json.dumps({"caseid": "1", "drugname": "Aspirin", "role_cod": "PS"})]})
 
-    # Reac dataframe needs a JSON string containing pt
+    # Reac dataframe needs a JSON string containing caseid, pt
     reac_df = pl.DataFrame({"data": [json.dumps({"caseid": "1", "pt": "Headache"})]})
 
     mock_extract.side_effect = [demo_df, drug_df, reac_df]
 
     mock_generate_ids = mocker.patch("coreason_etl_faers.orchestrator_silver.generate_coreason_ids")
-    mock_generate_ids.return_value = pl.DataFrame({"caseid": ["1"], "drugname": ["Aspirin"], "coreason_id": ["id1"]})
+    mock_generate_ids.return_value = pl.DataFrame(
+        {"caseid": ["1"], "drugname": ["Aspirin"], "coreason_id": ["id1"], "role_cod": ["PS"]}
+    )
 
     mock_normalize_pts = mocker.patch("coreason_etl_faers.orchestrator_silver.normalize_meddra_pts")
     mock_normalize_pts.return_value = pl.DataFrame({"caseid": ["1"], "pt": ["Headache"], "normalized_pt": ["HEADACHE"]})
@@ -45,7 +47,13 @@ def test_execute_silver_transmutation_task_happy_path(mocker: MagicMock) -> None
     mock_extract.assert_any_call("postgresql://fake_uri", "faers_bronze_drug")
     mock_extract.assert_any_call("postgresql://fake_uri", "faers_bronze_reac")
 
-    assert manifest.demo_df is demo_df
+    assert "caseid" in manifest.demo_df.columns
+    assert "patient_id" in manifest.demo_df.columns
+    assert "event_dt" in manifest.demo_df.columns
+    assert manifest.demo_df["caseid"][0] == "1"
+    assert manifest.demo_df["patient_id"][0] == "P1"
+    assert manifest.demo_df["event_dt"][0] == "2023-01-01"
+
     assert manifest.drug_df is mock_generate_ids.return_value
     assert manifest.reac_df is mock_normalize_pts.return_value
 
@@ -63,7 +71,10 @@ def test_execute_silver_transmutation_task_empty_dfs(mocker: MagicMock) -> None:
     manifest = execute_silver_transmutation_task("postgresql://fake_uri")
 
     assert mock_extract.call_count == 3
-    assert manifest.demo_df is empty_df
+    # Check if fallback columns are correctly added
+    assert "caseid" in manifest.demo_df.columns
+    assert "patient_id" in manifest.demo_df.columns
+    assert "event_dt" in manifest.demo_df.columns
     assert manifest.drug_df is empty_df
     assert manifest.reac_df is empty_df
 
