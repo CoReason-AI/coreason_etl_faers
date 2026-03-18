@@ -56,7 +56,7 @@ def resolve_faers_url(source_quarter: str, url: str | None = None) -> str:
 
     # Defensive regex to find the zip link regardless of DOM structure
     # Matches href="...ASCII...{source_quarter}....zip" (case-insensitive for the quarter)
-    pattern = rf'href=["\']([^"\']*ASCII[^"\']*?{re.escape(source_quarter)}[^"\']*?\.zip)["\']'
+    pattern = rf'href=["\']([^"\']*ASCII[^"\']*?{source_quarter}[^"\']*?\.zip)["\']'
 
     match = re.search(pattern, html_content, re.IGNORECASE)
     if not match:
