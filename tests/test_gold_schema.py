@@ -38,6 +38,28 @@ def test_build_fact_adverse_event_manifold_happy_path() -> None:
     assert result["event_dt"].to_list() == ["2023-01-01", "2023-02-01", "2023-03-01"]
 
 
+def test_build_fact_adverse_event_manifold_complex_unexpected_types() -> None:
+    # Arrange
+    # Data upstream should be parsed as strings, but if upstream gives ints/structs
+    # the manifold build must not crash and should attempt to pass them along
+    df = pl.DataFrame(
+        {
+            "caseid": [123, 456],  # Unexpected Int type
+            "patient_id": [{"id": "p1"}, {"id": "p2"}],  # Unexpected Struct type
+            "event_dt": [None, "2023-02-01"],
+            "extra_col": ["a", "b"],
+        }
+    )
+
+    # Act
+    result = build_fact_adverse_event_manifold(df)
+
+    # Assert
+    assert result.columns == ["caseid", "patient_id", "event_dt"]
+    assert result["caseid"].to_list() == [123, 456]
+    assert result["patient_id"].to_list() == [{"id": "p1"}, {"id": "p2"}]
+
+
 def test_build_fact_adverse_event_manifold_missing_columns() -> None:
     # Arrange
     df = pl.DataFrame(
