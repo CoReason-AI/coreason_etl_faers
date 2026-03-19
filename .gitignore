@@ -140,3 +140,5 @@ cython_debug/
 
 # Runtime Logs
 logs/
+.env
+faers_ascii_2023Q4.zip

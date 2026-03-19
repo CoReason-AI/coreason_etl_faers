@@ -12,8 +12,12 @@ authors = [
     { name = "Akshaya M", email = "akshaya.movvar@coreason.ai" },
 ]
 dependencies = [
+    "adbc-driver-postgresql>=1.10.0",
+    "connectorx>=0.4.5",
+    "dlt[postgres]>=1.24.0",
     "loguru>=0.7.2",
     "polars>=1.39.0",
+    "pyarrow>=23.0.1",
     "pydantic>=2.12.5",
     "requests>=2.32.5",
 ]

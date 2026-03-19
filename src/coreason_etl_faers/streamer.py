@@ -87,11 +87,21 @@ def stream_faers_data(url: str, target_filename: str) -> Iterator[dict[str, Any]
     """
     with _get_zip_filepath(url) as zip_path:
         logger.info(f"Opening ZIP archive: {zip_path} for file: {target_filename}")
-        with zipfile.ZipFile(zip_path, "r") as z, z.open(target_filename) as f:
-            # Enforce latin-1 for legacy medical text
-            decoded_stream = (line.decode("latin-1", errors="replace") for line in f)
-            # Prevent quote swallowing on $ delimiters
-            # ruff: noqa: UP028
-            reader = csv.DictReader(decoded_stream, delimiter="$", quoting=csv.QUOTE_NONE)
-            for row in reader:
-                yield row  # Yield single dict to let dlt handle batching
+        with zipfile.ZipFile(zip_path, "r") as z:
+            # Smart search: Look for the file inside any FDA sub-folders
+            actual_internal_path = next(
+                (name for name in z.namelist() if name.upper().endswith(target_filename.upper())), 
+                None
+            )
+            
+            if not actual_internal_path:
+                raise KeyError(f"Could not find {target_filename} anywhere inside the ZIP archive.")
+
+            with z.open(actual_internal_path) as f:
+                # Enforce latin-1 for legacy medical text
+                decoded_stream = (line.decode("latin-1", errors="replace") for line in f)
+                # Prevent quote swallowing on $ delimiters
+                # ruff: noqa: UP028
+                reader = csv.DictReader(decoded_stream, delimiter="$", quoting=csv.QUOTE_NONE)
+                for row in reader:
+                    yield row  # Yield single dict to let dlt handle batching
