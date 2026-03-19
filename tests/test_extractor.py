@@ -79,6 +79,46 @@ def test_resolve_faers_url_default_url(mocker: MockerFixture) -> None:
     mock_get.assert_called_once_with("https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html", timeout=30)
 
 
+def test_resolve_faers_url_complex_page_structure(mocker: MockerFixture) -> None:
+    """Test defensive regex against a complex HTML page with multiple misleading links,
+    different formats, and various DOM structures."""
+    html_content = """
+    <html>
+        <body>
+            <div>
+                <!-- Misleading XML Link -->
+                <a href="https://example.com/faers/XML_2023Q4_data.zip">XML 2023Q4</a>
+
+                <!-- Misleading Link for a Different Quarter -->
+                <a class="btn" href="https://example.com/faers/ASCII_2023Q3_data.zip">ASCII 2023Q3</a>
+
+                <!-- Misleading Non-ZIP Link -->
+                <a href="https://example.com/faers/ASCII_2023Q4_data.pdf">ASCII 2023Q4 PDF</a>
+
+                <!-- Target Link buried in weird structure -->
+                <span>
+                    <a data-url="target" href="https://fis.fda.gov/downloads/ASCII_2023Q4_extract.zip"
+                       target="_blank">Download Target</a>
+                </span>
+
+                <!-- Another Misleading Link later in the document -->
+                <a href="https://example.com/faers/ASCII_2024Q1_data.zip">ASCII 2024Q1</a>
+            </div>
+        </body>
+    </html>
+    """
+    mock_response = mocker.Mock()
+    mock_response.text = html_content
+    mock_response.raise_for_status.return_value = None
+
+    mock_get = mocker.patch("requests.get", return_value=mock_response)
+
+    result = resolve_faers_url("2023q4", url="https://fis.fda.gov/extensions.html")
+
+    assert result == "https://fis.fda.gov/downloads/ASCII_2023Q4_extract.zip"
+    mock_get.assert_called_once()
+
+
 def test_resolve_faers_url_no_match(mocker: MockerFixture) -> None:
     """Test that an error is raised when the HTML content does not contain a matching ZIP link."""
     html_content = """
