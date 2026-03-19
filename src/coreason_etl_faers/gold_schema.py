@@ -11,6 +11,22 @@
 import polars as pl
 
 
+def _enforce_schema(df: pl.DataFrame, expected_cols: list[str]) -> pl.DataFrame:
+    """
+    Private helper function to enforce a strict tabular schema.
+    It guarantees all expected columns exist (filling missing ones with nulls)
+    and trims away any extra columns.
+    """
+    if len(df) == 0:
+        return pl.DataFrame(schema=dict.fromkeys(expected_cols, pl.String))
+
+    for col in expected_cols:
+        if col not in df.columns:
+            df = df.with_columns(pl.lit(None).alias(col))
+
+    return df.select(expected_cols)
+
+
 def build_fact_adverse_event_manifold(df: pl.DataFrame) -> pl.DataFrame:
     """
     AGENT INSTRUCTION: This function strictly adheres to the Layer 3 Gold (The Product) architecture for fact tables.
@@ -26,19 +42,7 @@ def build_fact_adverse_event_manifold(df: pl.DataFrame) -> pl.DataFrame:
     Returns:
         A Polars DataFrame representing the fact_adverse_event schema.
     """
-    # Defensive check: ensure all expected columns exist, fill with nulls if absent
-    expected_cols = ["caseid", "patient_id", "event_dt"]
-
-    # Check if empty
-    if len(df) == 0:
-        return pl.DataFrame(schema={"caseid": pl.String, "patient_id": pl.String, "event_dt": pl.String})
-
-    for col in expected_cols:
-        if col not in df.columns:
-            df = df.with_columns(pl.lit(None).alias(col))
-
-    # Extract just the relevant columns
-    return df.select(["caseid", "patient_id", "event_dt"])
+    return _enforce_schema(df, ["caseid", "patient_id", "event_dt"])
 
 
 def build_bridge_case_drug_manifold(df: pl.DataFrame) -> pl.DataFrame:
@@ -56,24 +60,7 @@ def build_bridge_case_drug_manifold(df: pl.DataFrame) -> pl.DataFrame:
     Returns:
         A Polars DataFrame representing the bridge_case_drug schema.
     """
-    expected_cols = ["caseid", "coreason_id", "role_cod"]
-
-    # Check if empty
-    if len(df) == 0:
-        return pl.DataFrame(
-            schema={
-                "caseid": pl.String,
-                "coreason_id": pl.String,
-                "role_cod": pl.String,
-            }
-        )
-
-    for col in expected_cols:
-        if col not in df.columns:
-            df = df.with_columns(pl.lit(None).alias(col))
-
-    # Extract just the relevant columns
-    return df.select(expected_cols)
+    return _enforce_schema(df, ["caseid", "coreason_id", "role_cod"])
 
 
 def build_bridge_case_reaction_manifold(df: pl.DataFrame) -> pl.DataFrame:
@@ -91,20 +78,4 @@ def build_bridge_case_reaction_manifold(df: pl.DataFrame) -> pl.DataFrame:
     Returns:
         A Polars DataFrame representing the bridge_case_reaction schema.
     """
-    expected_cols = ["caseid", "normalized_pt"]
-
-    # Check if empty
-    if len(df) == 0:
-        return pl.DataFrame(
-            schema={
-                "caseid": pl.String,
-                "normalized_pt": pl.String,
-            }
-        )
-
-    for col in expected_cols:
-        if col not in df.columns:
-            df = df.with_columns(pl.lit(None).alias(col))
-
-    # Extract just the relevant columns
-    return df.select(expected_cols)
+    return _enforce_schema(df, ["caseid", "normalized_pt"])
