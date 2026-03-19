@@ -34,8 +34,10 @@ def _get_zip_filepath(url: str) -> Generator[str]:
     parsed_url = urlparse(url)
 
     if parsed_url.scheme == "file":
-        # Resolve the local path using standard library tools
-        local_path = unquote(url2pathname(parsed_url.path))
+        # Strip `file://` scheme carefully to support both Unix paths and
+        # Windows drive letters natively, applying standard unquoting.
+        path_part = url[7:] if url.startswith("file://") else parsed_url.path
+        local_path = unquote(url2pathname(path_part))
         logger.info(f"Using local file directly: {local_path}")
         yield local_path
     else:
