@@ -40,12 +40,26 @@ def test_execute_silver_transmutation_task_happy_path(mocker: MagicMock) -> None
     mock_normalize_pts = mocker.patch("coreason_etl_faers.orchestrator_silver.normalize_meddra_pts")
     mock_normalize_pts.return_value = pl.DataFrame({"caseid": ["1"], "pt": ["Headache"], "normalized_pt": ["HEADACHE"]})
 
+    mock_write_db = mocker.patch("polars.DataFrame.write_database")
+
     manifest = execute_silver_transmutation_task("postgresql://fake_uri")
 
     assert mock_extract.call_count == 3
-    mock_extract.assert_any_call("postgresql://fake_uri", "faers_bronze_demo")
-    mock_extract.assert_any_call("postgresql://fake_uri", "faers_bronze_drug")
-    mock_extract.assert_any_call("postgresql://fake_uri", "faers_bronze_reac")
+    mock_extract.assert_any_call("postgresql://fake_uri", "coreason_etl_faers_bronze_demo", source_schema="bronze")
+    mock_extract.assert_any_call("postgresql://fake_uri", "coreason_etl_faers_bronze_drug", source_schema="bronze")
+    mock_extract.assert_any_call("postgresql://fake_uri", "coreason_etl_faers_bronze_reac", source_schema="bronze")
+
+    # Assert that write_database was called on all 3 dataframes
+    assert mock_write_db.call_count == 3
+    mock_write_db.assert_any_call(
+        "coreason_etl_faers_silver_demo", connection="postgresql://fake_uri", engine="adbc", if_table_exists="replace"
+    )
+    mock_write_db.assert_any_call(
+        "coreason_etl_faers_silver_drug", connection="postgresql://fake_uri", engine="adbc", if_table_exists="replace"
+    )
+    mock_write_db.assert_any_call(
+        "coreason_etl_faers_silver_reac", connection="postgresql://fake_uri", engine="adbc", if_table_exists="replace"
+    )
 
     assert "caseid" in manifest.demo_df.columns
     assert "patient_id" in manifest.demo_df.columns
@@ -104,6 +118,8 @@ def test_execute_silver_transmutation_task_complex_malformed_json(mocker: MagicM
     # Use the real generate_ids and normalize_pts functions to test full integration resilience
     # No patching of these internal functions.
 
+    mocker.patch("polars.DataFrame.write_database")
+
     manifest = execute_silver_transmutation_task("postgresql://fake_uri")
 
     assert mock_extract.call_count == 3
@@ -136,9 +152,13 @@ def test_execute_silver_transmutation_task_empty_dfs(mocker: MagicMock) -> None:
     mocker.patch("coreason_etl_faers.orchestrator_silver.generate_coreason_ids", return_value=empty_df)
     mocker.patch("coreason_etl_faers.orchestrator_silver.normalize_meddra_pts", return_value=empty_df)
 
+    mock_write_db = mocker.patch("polars.DataFrame.write_database")
+
     manifest = execute_silver_transmutation_task("postgresql://fake_uri")
 
     assert mock_extract.call_count == 3
+    # write_database shouldn't be called for empty dataframes
+    mock_write_db.assert_not_called()
     # Check if fallback columns are correctly added
     assert "caseid" in manifest.demo_df.columns
     assert "patient_id" in manifest.demo_df.columns
@@ -171,6 +191,8 @@ def test_execute_silver_transmutation_task_missing_columns(mocker: MagicMock) ->
     mock_normalize_pts = mocker.patch(
         "coreason_etl_faers.orchestrator_silver.normalize_meddra_pts", side_effect=check_reac_df
     )
+
+    mocker.patch("polars.DataFrame.write_database")
 
     execute_silver_transmutation_task("postgresql://fake_uri")
 

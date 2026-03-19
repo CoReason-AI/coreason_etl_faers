@@ -9,12 +9,13 @@
 # Source Code: https://github.com/CoReason-AI/coreason_etl_faers
 
 import polars as pl
+from pytest_mock import MockerFixture
 
 from coreason_etl_faers.orchestrator_gold import execute_gold_transmutation_task
 from coreason_etl_faers.orchestrator_silver import SilverManifoldManifest
 
 
-def test_execute_gold_transmutation_task_happy_path() -> None:
+def test_execute_gold_transmutation_task_happy_path(mocker: MockerFixture) -> None:
     # Arrange
     silver_manifest = SilverManifoldManifest(
         demo_df=pl.DataFrame(
@@ -39,10 +40,30 @@ def test_execute_gold_transmutation_task_happy_path() -> None:
         ),
     )
 
+    mock_write_db = mocker.patch("polars.DataFrame.write_database")
+    connection_uri = "postgresql://test_user:pass@localhost/db"
+
     # Act
-    gold_manifest = execute_gold_transmutation_task(silver_manifest)
+    gold_manifest = execute_gold_transmutation_task(silver_manifest, connection_uri)
 
     # Assert
+    assert mock_write_db.call_count == 3
+    mock_write_db.assert_any_call(
+        "coreason_etl_faers_gold_fact_adverse_event",
+        connection=connection_uri,
+        engine="adbc",
+        if_table_exists="replace",
+    )
+    mock_write_db.assert_any_call(
+        "coreason_etl_faers_gold_bridge_case_drug", connection=connection_uri, engine="adbc", if_table_exists="replace"
+    )
+    mock_write_db.assert_any_call(
+        "coreason_etl_faers_gold_bridge_case_reaction",
+        connection=connection_uri,
+        engine="adbc",
+        if_table_exists="replace",
+    )
+
     assert gold_manifest.fact_adverse_event_df.columns == ["caseid", "patient_id", "event_dt"]
     assert len(gold_manifest.fact_adverse_event_df) == 1
     assert gold_manifest.fact_adverse_event_df["caseid"].to_list() == ["123"]
@@ -56,7 +77,7 @@ def test_execute_gold_transmutation_task_happy_path() -> None:
     assert gold_manifest.bridge_case_reaction_df["caseid"].to_list() == ["123"]
 
 
-def test_execute_gold_transmutation_task_empty_dfs() -> None:
+def test_execute_gold_transmutation_task_empty_dfs(mocker: MockerFixture) -> None:
     # Arrange
     silver_manifest = SilverManifoldManifest(
         demo_df=pl.DataFrame(),
@@ -64,8 +85,14 @@ def test_execute_gold_transmutation_task_empty_dfs() -> None:
         reac_df=pl.DataFrame(),
     )
 
+    mock_write_db = mocker.patch("polars.DataFrame.write_database")
+    connection_uri = "postgresql://test_user:pass@localhost/db"
+
     # Act
-    gold_manifest = execute_gold_transmutation_task(silver_manifest)
+    gold_manifest = execute_gold_transmutation_task(silver_manifest, connection_uri)
+
+    # Assert write db not called for empty frames
+    mock_write_db.assert_not_called()
 
     # Assert
     assert gold_manifest.fact_adverse_event_df.columns == ["caseid", "patient_id", "event_dt"]
@@ -78,7 +105,7 @@ def test_execute_gold_transmutation_task_empty_dfs() -> None:
     assert len(gold_manifest.bridge_case_reaction_df) == 0
 
 
-def test_execute_gold_transmutation_task_missing_columns() -> None:
+def test_execute_gold_transmutation_task_missing_columns(mocker: MockerFixture) -> None:
     # Arrange
     # Missing columns will be populated with null values by the gold_schema functions
     silver_manifest = SilverManifoldManifest(
@@ -87,8 +114,11 @@ def test_execute_gold_transmutation_task_missing_columns() -> None:
         reac_df=pl.DataFrame({"caseid": ["123"]}),
     )
 
+    mocker.patch("polars.DataFrame.write_database")
+    connection_uri = "postgresql://test_user:pass@localhost/db"
+
     # Act
-    gold_manifest = execute_gold_transmutation_task(silver_manifest)
+    gold_manifest = execute_gold_transmutation_task(silver_manifest, connection_uri)
 
     # Assert
     assert gold_manifest.fact_adverse_event_df.columns == ["caseid", "patient_id", "event_dt"]

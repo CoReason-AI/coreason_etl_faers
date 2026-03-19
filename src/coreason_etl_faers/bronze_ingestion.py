@@ -32,7 +32,7 @@ def load_faers_to_bronze(stream_generator: Iterator[dict[str, Any]], table_name:
     pipeline = dlt.pipeline(
         pipeline_name="faers_bronze_pipeline",
         destination="postgres",
-        dataset_name="faers_bronze",
+        dataset_name="bronze",
     )
 
     logger.info("Executing dlt pipeline run with max_table_nesting=0")

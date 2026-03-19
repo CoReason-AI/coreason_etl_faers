@@ -41,9 +41,9 @@ def execute_bronze_extraction_task(policy: FaersExtractionPolicy) -> None:
 
     # Define the core FAERS datasets and their target tables
     core_datasets = {
-        f"DEMO{file_quarter}.txt": "faers_bronze_demo",
-        f"DRUG{file_quarter}.txt": "faers_bronze_drug",
-        f"REAC{file_quarter}.txt": "faers_bronze_reac",
+        f"DEMO{file_quarter}.txt": "coreason_etl_faers_bronze_demo",
+        f"DRUG{file_quarter}.txt": "coreason_etl_faers_bronze_drug",
+        f"REAC{file_quarter}.txt": "coreason_etl_faers_bronze_reac",
     }
 
     for filename, table_name in core_datasets.items():
