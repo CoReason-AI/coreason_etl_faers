@@ -118,6 +118,66 @@ def test_stream_faers_data_http_failure(mocker: MockerFixture) -> None:
     assert mock_unlink.call_count == 1
 
 
+def test_stream_faers_data_complex_inconsistent_columns_and_quotes(mocker: MockerFixture) -> None:
+    """Test streamer resilience against inconsistent columns and unescaped quotes which
+    often appear in legacy medical text fields."""
+    mock_data = (
+        "col1$col2$col3\n"
+        'val1$"quoted" value$val3\n'  # Unescaped quotes
+        "val4$val5\n"  # Missing a column
+        "val7$val8$val9$extra_val\n"  # Extra column
+    )
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("test_file.txt", mock_data.encode("latin-1"))
+
+    url = "https://example.com/faers.zip"
+    target_filename = "test_file.txt"
+
+    mock_response = mocker.Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_content.return_value = [zip_buffer.getvalue()]
+
+    mock_response.__enter__ = mocker.Mock(return_value=mock_response)
+    mock_response.__exit__ = mocker.Mock(return_value=None)
+    mocker.patch("requests.get", return_value=mock_response)
+
+    results = list(stream_faers_data(url, target_filename))
+
+    assert len(results) == 3
+    # Quotes should be preserved as part of the string (csv.QUOTE_NONE)
+    assert results[0] == {"col1": "val1", "col2": '"quoted" value', "col3": "val3"}
+    # Missing columns become None
+    assert results[1] == {"col1": "val4", "col2": "val5", "col3": None}
+    # Extra columns are assigned to the None key by DictReader
+    assert results[2]["col1"] == "val7"
+    assert results[2]["col2"] == "val8"
+    assert results[2]["col3"] == "val9"
+    assert results[2].get(None) == ["extra_val"]  # type: ignore[call-overload]
+
+
+def test_stream_faers_data_empty_file(mocker: MockerFixture) -> None:
+    """Test streamer behavior when the target txt file is completely empty."""
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("test_file.txt", b"")
+
+    url = "https://example.com/faers.zip"
+    target_filename = "test_file.txt"
+
+    mock_response = mocker.Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_content.return_value = [zip_buffer.getvalue()]
+
+    mock_response.__enter__ = mocker.Mock(return_value=mock_response)
+    mock_response.__exit__ = mocker.Mock(return_value=None)
+    mocker.patch("requests.get", return_value=mock_response)
+
+    results = list(stream_faers_data(url, target_filename))
+
+    assert len(results) == 0
+
+
 def test_stream_faers_data_bad_zip_file(mocker: MockerFixture) -> None:
     """Test that a non-zip file throws BadZipFile and cleans up correctly."""
     url = "https://example.com/bad.zip"

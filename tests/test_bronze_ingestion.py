@@ -46,7 +46,7 @@ def test_load_faers_to_bronze(mocker: MockerFixture) -> None:
     mock_dlt_pipeline.assert_called_once_with(
         pipeline_name="faers_bronze_pipeline",
         destination="postgres",
-        dataset_name="faers_bronze",
+        dataset_name="bronze",
     )
 
     # Verify that resource was created with max_table_nesting=0

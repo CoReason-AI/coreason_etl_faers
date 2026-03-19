@@ -19,6 +19,7 @@ def test_extract_deduplicated_cases_task_success(mocker: MockerFixture) -> None:
     """Test standard pushdown execution successfully extracts mock Polars DataFrame."""
     connection_uri = "postgresql://user:pass@localhost:5432/db"
     source_table = "faers_bronze"
+    source_schema = "test_schema"
 
     # The expected df returned from the database
     expected_df = pl.DataFrame(
@@ -27,7 +28,7 @@ def test_extract_deduplicated_cases_task_success(mocker: MockerFixture) -> None:
 
     mock_read_db = mocker.patch("polars.read_database", return_value=expected_df)
 
-    result_df = extract_deduplicated_cases_task(connection_uri, source_table)
+    result_df = extract_deduplicated_cases_task(connection_uri, source_table, source_schema)
 
     # Validate output
     assert len(result_df) == 2
@@ -41,7 +42,7 @@ def test_extract_deduplicated_cases_task_success(mocker: MockerFixture) -> None:
 
     assert called_conn == connection_uri
     assert "ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY primaryid DESC)" in called_query
-    assert source_table in called_query
+    assert f"{source_schema}.{source_table}" in called_query
 
 
 def test_extract_deduplicated_cases_task_empty(mocker: MockerFixture) -> None:
