@@ -44,9 +44,9 @@ def test_execute_bronze_extraction_task_success(mocker: MockerFixture) -> None:
 
     assert mock_load_bronze.call_count == 3
     load_calls = mock_load_bronze.call_args_list
-    assert load_calls[0][0][1] == "faers_bronze_demo"
-    assert load_calls[1][0][1] == "faers_bronze_drug"
-    assert load_calls[2][0][1] == "faers_bronze_reac"
+    assert load_calls[0][0][1] == "coreason_etl_faers_bronze_demo"
+    assert load_calls[1][0][1] == "coreason_etl_faers_bronze_drug"
+    assert load_calls[2][0][1] == "coreason_etl_faers_bronze_reac"
 
 
 def test_execute_bronze_extraction_task_error(mocker: MockerFixture) -> None:

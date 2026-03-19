@@ -15,7 +15,9 @@ import polars as pl
 from coreason_etl_faers.utils.logger import logger
 
 
-def extract_deduplicated_cases_task(connection_uri: str, source_table: str) -> pl.DataFrame:
+def extract_deduplicated_cases_task(
+    connection_uri: str, source_table: str, source_schema: str = "bronze"
+) -> pl.DataFrame:
     """
     AGENT INSTRUCTION: This function strictly adheres to the Compute Pushdown Deduplication requirement.
     It executes a SQL Window function against PostgreSQL to filter the most recent cases natively,
@@ -26,20 +28,22 @@ def extract_deduplicated_cases_task(connection_uri: str, source_table: str) -> p
     Args:
         connection_uri: The strict URI connection string to the PostgreSQL database.
         source_table: The target physical table name in the Bronze layer.
+        source_schema: The schema where the table resides. Defaults to 'bronze'.
 
     Returns:
         A Polars DataFrame representing the deduplicated case state.
 
     Raises:
-        ValueError: If the source_table contains invalid characters.
+        ValueError: If the source_table or source_schema contains invalid characters.
     """
-    logger.info(f"Initiating extract_deduplicated_cases_task from table: {source_table}")
+    logger.info(f"Initiating extract_deduplicated_cases_task from table: {source_schema}.{source_table}")
 
     # Defensive validation to prevent SQL injection via table name interpolation
-    if not re.match(r"^[a-zA-Z0-9_]+$", source_table):
-        logger.error(f"Adversarial extraction vector detected. Invalid source_table: {source_table}")
+    if not re.match(r"^[a-zA-Z0-9_]+$", source_table) or not re.match(r"^[a-zA-Z0-9_]+$", source_schema):
+        logger.error(f"Adversarial extraction vector detected. Invalid schema or table: {source_schema}.{source_table}")
         raise ValueError(
-            f"Invalid source_table name: '{source_table}'. Must contain only alphanumeric characters and underscores."
+            f"Invalid schema or table name: '{source_schema}.{source_table}'. "
+            "Must contain only alphanumeric characters and underscores."
         )
 
     # ruff: noqa: S608
@@ -49,7 +53,7 @@ def extract_deduplicated_cases_task(connection_uri: str, source_table: str) -> p
             data->>'caseid' AS caseid,
             (data->>'primaryid')::numeric AS primaryid,
             data
-        FROM {source_table}
+        FROM {source_schema}.{source_table}
     )
     SELECT data
     FROM (

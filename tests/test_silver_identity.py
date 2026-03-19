@@ -38,6 +38,42 @@ def test_generate_coreason_ids_happy_path() -> None:
     assert coreason_ids == [expected_aspirin, expected_ibuprofen, expected_tylenol]
 
 
+def test_generate_coreason_ids_complex_unicode_and_symbols() -> None:
+    """Test standard drug names resolve deterministically across non-latin,
+    emojis, and zero-width characters."""
+    df = pl.DataFrame(
+        {
+            "drugname": [
+                "Aspirin",
+                "Aspirin\u200b",  # zero-width space
+                "Áspirín",  # Accented
+                "Аспирин",  # Cyrillic
+                "💊Pill",  # Emoji
+            ]
+        }
+    )
+
+    result = generate_coreason_ids(df)
+
+    normalized = result["normalized_drugname"].to_list()
+    assert normalized == ["ASPIRIN", "ASPIRIN\u200b", "ÁSPIRÍN", "АСПИРИН", "💊PILL"]
+
+    coreason_ids = result["coreason_id"].to_list()
+    expected_aspirin = str(uuid.uuid5(NAMESPACE_FAERS_DRUG, "ASPIRIN"))
+    expected_zws = str(uuid.uuid5(NAMESPACE_FAERS_DRUG, "ASPIRIN\u200b"))
+    expected_accent = str(uuid.uuid5(NAMESPACE_FAERS_DRUG, "ÁSPIRÍN"))
+    expected_cyrillic = str(uuid.uuid5(NAMESPACE_FAERS_DRUG, "АСПИРИН"))
+    expected_emoji = str(uuid.uuid5(NAMESPACE_FAERS_DRUG, "💊PILL"))
+
+    assert coreason_ids == [
+        expected_aspirin,
+        expected_zws,
+        expected_accent,
+        expected_cyrillic,
+        expected_emoji,
+    ]
+
+
 def test_generate_coreason_ids_empty_and_null() -> None:
     """Test handling of null, empty strings, and whitespace-only strings."""
     df = pl.DataFrame({"drugname": [None, "", "   "]})

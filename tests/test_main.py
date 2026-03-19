@@ -66,7 +66,7 @@ def test_execute_faers_etl_transmutation_task_success(
 
     mock_bronze.assert_called_once_with(mock_policy)
     mock_silver.assert_called_once_with(connection_uri)
-    mock_gold.assert_called_once_with(mock_silver_manifest)
+    mock_gold.assert_called_once_with(mock_silver_manifest, connection_uri)
 
     assert result == mock_gold_manifest
 
@@ -134,4 +134,4 @@ def test_execute_faers_etl_transmutation_task_gold_failure(
 
     mock_bronze.assert_called_once_with(mock_policy)
     mock_silver.assert_called_once_with(connection_uri)
-    mock_gold.assert_called_once_with(mock_silver_manifest)
+    mock_gold.assert_called_once_with(mock_silver_manifest, connection_uri)

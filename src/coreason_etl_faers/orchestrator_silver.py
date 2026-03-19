@@ -30,12 +30,29 @@ class SilverManifoldManifest(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+def _extract_json_fields(df: pl.DataFrame, fields: list[str]) -> pl.DataFrame:
+    """
+    Private helper function to safely unpack JSON fields from the Bronze layer's
+    'data' column. It handles missing columns by injecting nulls, preventing
+    crashes on malformed upstream payloads.
+    """
+    if "data" in df.columns and len(df) > 0:
+        exprs = [pl.col("data").str.json_path_match(f"$.{field}").alias(field) for field in fields]
+        df = df.with_columns(exprs)
+
+    for field in fields:
+        if field not in df.columns:
+            df = df.with_columns(pl.lit(None).cast(pl.String).alias(field))
+
+    return df
+
+
 def execute_silver_transmutation_task(connection_uri: str) -> SilverManifoldManifest:
     """
     AGENT INSTRUCTION: This orchestrates the Silver layer manifold transmutation.
     It extracts deduplicated cases from the Bronze layer tables natively in PostgreSQL,
     then applies Silver-layer structural normalizations in Polars (UUID5 coreason_id generation for drugs,
-    and MedDRA PT normalization for reactions).
+    and MedDRA PT normalization for reactions), and finally persists them to the Silver schema.
 
     Args:
         connection_uri: The strict URI connection string to the PostgreSQL database.
@@ -46,55 +63,38 @@ def execute_silver_transmutation_task(connection_uri: str) -> SilverManifoldMani
     logger.info("Initiating Silver layer transmutation task.")
 
     logger.info("Extracting and transmuting DEMO manifold.")
-    demo_df = extract_deduplicated_cases_task(connection_uri, "faers_bronze_demo")
-
-    if "data" in demo_df.columns and len(demo_df) > 0:
-        demo_df = demo_df.with_columns(
-            pl.col("data").str.json_path_match("$.caseid").alias("caseid"),
-            pl.col("data").str.json_path_match("$.patient_id").alias("patient_id"),
-            pl.col("data").str.json_path_match("$.event_dt").alias("event_dt"),
-        )
-
-    # If the columns missing, add them to avoid crash
-    for col in ["caseid", "patient_id", "event_dt"]:
-        if col not in demo_df.columns:
-            demo_df = demo_df.with_columns(pl.lit(None).cast(pl.String).alias(col))
+    demo_df = extract_deduplicated_cases_task(connection_uri, "coreason_etl_faers_bronze_demo", source_schema="bronze")
+    demo_df = _extract_json_fields(demo_df, ["caseid", "patient_id", "event_dt"])
 
     logger.info("Extracting and transmuting DRUG manifold.")
-    drug_raw_df = extract_deduplicated_cases_task(connection_uri, "faers_bronze_drug")
-
-    # Silver ID Generation requires 'drugname' field. The data from `extract_deduplicated_cases_task`
-    # is packed inside a 'data' struct column due to the dlt ingestion format into JSONB.
-    # We must unpack the JSON string into columns to apply Polars native functions.
-
-    # We first parse the JSON string in the 'data' column into a struct, then unnest it.
-    if "data" in drug_raw_df.columns and len(drug_raw_df) > 0:
-        drug_raw_df = drug_raw_df.with_columns(
-            pl.col("data").str.json_path_match("$.drugname").alias("drugname"),
-            pl.col("data").str.json_path_match("$.caseid").alias("caseid"),
-            pl.col("data").str.json_path_match("$.role_cod").alias("role_cod"),
-        )
-
-    # If the columns missing, add them to avoid crash
-    for col in ["drugname", "caseid", "role_cod"]:
-        if col not in drug_raw_df.columns:
-            drug_raw_df = drug_raw_df.with_columns(pl.lit(None).cast(pl.String).alias(col))
-
+    drug_raw_df = extract_deduplicated_cases_task(
+        connection_uri, "coreason_etl_faers_bronze_drug", source_schema="bronze"
+    )
+    drug_raw_df = _extract_json_fields(drug_raw_df, ["drugname", "caseid", "role_cod"])
     drug_df = generate_coreason_ids(drug_raw_df)
 
     logger.info("Extracting and transmuting REAC manifold.")
-    reac_raw_df = extract_deduplicated_cases_task(connection_uri, "faers_bronze_reac")
-
-    if "data" in reac_raw_df.columns and len(reac_raw_df) > 0:
-        reac_raw_df = reac_raw_df.with_columns(
-            pl.col("data").str.json_path_match("$.pt").alias("pt"),
-            pl.col("data").str.json_path_match("$.caseid").alias("caseid"),
-        )
-
-    if "pt" not in reac_raw_df.columns:
-        reac_raw_df = reac_raw_df.with_columns(pl.lit(None).cast(pl.String).alias("pt"))
-
+    reac_raw_df = extract_deduplicated_cases_task(
+        connection_uri, "coreason_etl_faers_bronze_reac", source_schema="bronze"
+    )
+    reac_raw_df = _extract_json_fields(reac_raw_df, ["pt", "caseid"])
     reac_df = normalize_meddra_pts(reac_raw_df)
+
+    logger.info("Persisting Silver manifolds to PostgreSQL (silver schema).")
+
+    # Save the transmutated frames to the postgres Silver schema
+    if len(demo_df) > 0:
+        demo_df.write_database(
+            "coreason_etl_faers_silver_demo", connection=connection_uri, engine="adbc", if_table_exists="replace"
+        )
+    if len(drug_df) > 0:
+        drug_df.write_database(
+            "coreason_etl_faers_silver_drug", connection=connection_uri, engine="adbc", if_table_exists="replace"
+        )
+    if len(reac_df) > 0:
+        reac_df.write_database(
+            "coreason_etl_faers_silver_reac", connection=connection_uri, engine="adbc", if_table_exists="replace"
+        )
 
     logger.info("Silver layer transmutation task completed successfully.")
     return SilverManifoldManifest(

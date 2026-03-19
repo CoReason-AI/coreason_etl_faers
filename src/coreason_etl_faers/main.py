@@ -45,7 +45,7 @@ def execute_faers_etl_transmutation_task(policy: FaersExtractionPolicy, connecti
 
         # Step 3: Gold Transmutation
         logger.info("Starting Gold Layer Transmutation.")
-        gold_manifest = execute_gold_transmutation_task(silver_manifest)
+        gold_manifest = execute_gold_transmutation_task(silver_manifest, connection_uri)
         logger.info("Gold Layer Transmutation completed.")
 
         logger.info("FAERS ETL transmutation task completed successfully.")
