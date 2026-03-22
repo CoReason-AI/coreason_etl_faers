@@ -23,25 +23,28 @@ def test_extract_deduplicated_cases_task_success(mocker: MockerFixture) -> None:
 
     # The expected df returned from the database
     expected_df = pl.DataFrame(
-        [{"data": '{"caseid": "1", "primaryid": "100"}'}, {"data": '{"caseid": "2", "primaryid": "200"}'}]
+        [
+            {"data": '{"caseid": "1", "primaryid": "100"}', "rn": 1},
+            {"data": '{"caseid": "2", "primaryid": "200"}', "rn": 1},
+        ]
     )
 
-    mock_read_db = mocker.patch("polars.read_database", return_value=expected_df)
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
 
     result_df = extract_deduplicated_cases_task(connection_uri, source_table, source_schema)
 
     # Validate output
     assert len(result_df) == 2
     assert "data" in result_df.columns
-    assert result_df.equals(expected_df)
+    assert "rn" not in result_df.columns
 
     # Validate mock parameters
     mock_read_db.assert_called_once()
     called_query = mock_read_db.call_args[0][0]
-    called_conn = mock_read_db.call_args[1]["connection"]
+    called_conn = mock_read_db.call_args[1]["uri"]
 
     assert called_conn == connection_uri
-    assert "ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY primaryid DESC)" in called_query
+    assert "ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY CAST(primaryid AS NUMERIC) DESC)" in called_query
     assert f"{source_schema}.{source_table}" in called_query
 
 
@@ -51,7 +54,7 @@ def test_extract_deduplicated_cases_task_empty(mocker: MockerFixture) -> None:
     source_table = "empty_table"
 
     expected_df = pl.DataFrame({"data": []}, schema={"data": pl.String})
-    mock_read_db = mocker.patch("polars.read_database", return_value=expected_df)
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
 
     result_df = extract_deduplicated_cases_task(connection_uri, source_table)
 
@@ -65,7 +68,7 @@ def test_extract_deduplicated_cases_task_connection_error(mocker: MockerFixture)
     connection_uri = "postgresql://user:pass@invalid:5432/db"
     source_table = "faers_bronze"
 
-    mocker.patch("polars.read_database", side_effect=Exception("Connection refused"))
+    mocker.patch("polars.read_database_uri", side_effect=Exception("Connection refused"))
 
     with pytest.raises(Exception, match="Connection refused"):
         extract_deduplicated_cases_task(connection_uri, source_table)

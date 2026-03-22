@@ -212,5 +212,5 @@ def test_stream_faers_data_missing_target_file(mocker: MockerFixture, mock_faers
     mock_response.__exit__ = mocker.Mock(return_value=None)
     mocker.patch("requests.get", return_value=mock_response)
 
-    with pytest.raises(KeyError, match=r"There is no item named 'missing_file.txt' in the archive"):
+    with pytest.raises(KeyError, match=r"Could not find missing_file.txt anywhere inside the ZIP archive"):
         list(stream_faers_data(url, target_filename))

@@ -90,10 +90,9 @@ def stream_faers_data(url: str, target_filename: str) -> Iterator[dict[str, Any]
         with zipfile.ZipFile(zip_path, "r") as z:
             # Smart search: Look for the file inside any FDA sub-folders
             actual_internal_path = next(
-                (name for name in z.namelist() if name.upper().endswith(target_filename.upper())), 
-                None
+                (name for name in z.namelist() if name.upper().endswith(target_filename.upper())), None
             )
-            
+
             if not actual_internal_path:
                 raise KeyError(f"Could not find {target_filename} anywhere inside the ZIP archive.")
 
