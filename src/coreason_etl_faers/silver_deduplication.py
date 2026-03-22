@@ -60,7 +60,7 @@ def extract_deduplicated_cases_task(
     """
 
     logger.debug("Executing compute pushdown deduplication query")
-    df = pl.read_database_uri(query, uri=connection_uri)
+    df = pl.read_database_uri(query, uri=connection_uri, engine="adbc")
 
     # Drop the temporary ranking column
     if "rn" in df.columns:

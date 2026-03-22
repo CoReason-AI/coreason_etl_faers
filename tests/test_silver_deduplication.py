@@ -42,8 +42,10 @@ def test_extract_deduplicated_cases_task_success(mocker: MockerFixture) -> None:
     mock_read_db.assert_called_once()
     called_query = mock_read_db.call_args[0][0]
     called_conn = mock_read_db.call_args[1]["uri"]
+    called_engine = mock_read_db.call_args[1]["engine"]
 
     assert called_conn == connection_uri
+    assert called_engine == "adbc"
     assert "ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY CAST(primaryid AS NUMERIC) DESC)" in called_query
     assert f"{source_schema}.{source_table}" in called_query
 
