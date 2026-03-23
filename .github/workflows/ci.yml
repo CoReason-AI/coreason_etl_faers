@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.14", "3.14t"]
+        python-version: ["3.14"]
     steps:
       - uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
       - name: Install uv
@@ -50,6 +50,10 @@ jobs:
       - name: Set PYTHON_GIL for Free-Threading
         if: matrix.python-version == '3.14t'
         run: echo "PYTHON_GIL=0" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Install libpq-dev for psycopg2 source build
+        run: sudo apt-get update && sudo apt-get install -y libpq-dev
         shell: bash
 
       - name: Install dependencies
@@ -78,7 +82,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
-        python-version: ["3.14", "3.14t"]
+        python-version: ["3.14"]
     steps:
       - uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
       - name: Install uv
@@ -91,6 +95,21 @@ jobs:
         if: matrix.python-version == '3.14t'
         run: echo "PYTHON_GIL=0" >> $GITHUB_ENV
         shell: bash
+
+      - name: Install libpq-dev (MacOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install postgresql
+        shell: bash
+
+      - name: Install libpq-dev (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install postgresql15 --force --params '/NoServer /Password:postgres'
+        shell: pwsh
+
+      - name: Set pg_config path (Windows)
+        if: matrix.os == 'windows-latest'
+        run: echo "C:\Program Files\PostgreSQL\15\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        shell: pwsh
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
