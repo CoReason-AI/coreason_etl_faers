@@ -20,7 +20,7 @@ from urllib.request import url2pathname
 
 import requests
 
-from coreason_etl_faers.utils.logger import logger
+from .utils.logger import logger
 
 
 @contextmanager

@@ -12,7 +12,8 @@ import re
 
 import requests
 
-from coreason_etl_faers.utils.logger import logger
+from .utils.http import get_robust_session
+from .utils.logger import logger
 
 
 class FAERSUrlResolutionError(Exception):
@@ -46,13 +47,13 @@ def resolve_faers_url(source_quarter: str, url: str | None = None) -> str:
 
     logger.info(f"Fetching FAERS HTML page from {url}")
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
+        with get_robust_session() as session:
+            response = session.get(url, timeout=30)
+            response.raise_for_status()
+            html_content = response.text
     except requests.RequestException as e:
         logger.error(f"Failed to fetch FAERS HTML page: {e}")
         raise FAERSUrlResolutionError(f"HTTP request failed: {e}") from e
-
-    html_content = response.text
 
     # Defensive regex to find the zip link regardless of DOM structure
     # Matches href="...ASCII...{source_quarter}....zip" (case-insensitive for the quarter)
