@@ -33,3 +33,27 @@ def test_logger_initialization() -> None:
 def test_logger_exports() -> None:
     """Test that logger is exported."""
     assert logger is not None
+
+
+def test_get_robust_session_configuration() -> None:
+    """Test that the robust session is properly configured with retries and adapters."""
+    import requests
+
+    from coreason_etl_faers.utils.http import get_robust_session
+
+    session = get_robust_session(retries=5, backoff_factor=0.5, status_forcelist=(500, 502))
+
+    assert isinstance(session, requests.Session)
+
+    # Verify adapter mounts
+    assert "http://" in session.adapters
+    assert "https://" in session.adapters
+
+    # Verify HTTPAdapter properties
+    from requests.adapters import HTTPAdapter
+
+    adapter = session.adapters["https://"]
+    assert isinstance(adapter, HTTPAdapter)
+    assert adapter.max_retries.total == 5
+    assert adapter.max_retries.backoff_factor == 0.5
+    assert list(adapter.max_retries.status_forcelist) == [500, 502]
