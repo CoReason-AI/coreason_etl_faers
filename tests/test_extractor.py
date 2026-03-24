@@ -36,7 +36,7 @@ def test_resolve_faers_url_success_absolute_link(mocker: MockerFixture) -> None:
     mock_response.text = html_content
     mock_response.raise_for_status.return_value = None
 
-    mock_get = mocker.patch("requests.get", return_value=mock_response)
+    mock_get = mocker.patch("requests.Session.get", return_value=mock_response)
 
     result = resolve_faers_url("2023q4", url="https://example.com/faers.html")
 
@@ -55,7 +55,7 @@ def test_resolve_faers_url_success_relative_link_single_quotes(mocker: MockerFix
     mock_response.text = html_content
     mock_response.raise_for_status.return_value = None
 
-    mock_get = mocker.patch("requests.get", return_value=mock_response)
+    mock_get = mocker.patch("requests.Session.get", return_value=mock_response)
 
     # If the URL resolves a relative link, it should use urljoin
     result = resolve_faers_url("2023Q4", url="https://example.com/base/")
@@ -71,7 +71,7 @@ def test_resolve_faers_url_default_url(mocker: MockerFixture) -> None:
     mock_response.text = html_content
     mock_response.raise_for_status.return_value = None
 
-    mock_get = mocker.patch("requests.get", return_value=mock_response)
+    mock_get = mocker.patch("requests.Session.get", return_value=mock_response)
 
     result = resolve_faers_url("2024q1")
 
@@ -111,7 +111,7 @@ def test_resolve_faers_url_complex_page_structure(mocker: MockerFixture) -> None
     mock_response.text = html_content
     mock_response.raise_for_status.return_value = None
 
-    mock_get = mocker.patch("requests.get", return_value=mock_response)
+    mock_get = mocker.patch("requests.Session.get", return_value=mock_response)
 
     result = resolve_faers_url("2023q4", url="https://fis.fda.gov/extensions.html")
 
@@ -133,7 +133,7 @@ def test_resolve_faers_url_no_match(mocker: MockerFixture) -> None:
     mock_response.text = html_content
     mock_response.raise_for_status.return_value = None
 
-    mocker.patch("requests.get", return_value=mock_response)
+    mocker.patch("requests.Session.get", return_value=mock_response)
 
     with pytest.raises(FAERSUrlResolutionError, match="Could not find matching ZIP link for quarter: 2023q4"):
         resolve_faers_url("2023q4", url="https://example.com/faers.html")
@@ -141,7 +141,7 @@ def test_resolve_faers_url_no_match(mocker: MockerFixture) -> None:
 
 def test_resolve_faers_url_http_error(mocker: MockerFixture) -> None:
     """Test that an error is raised when the HTTP request fails."""
-    mock_get = mocker.patch("requests.get", side_effect=requests.RequestException("Connection timeout"))
+    mock_get = mocker.patch("requests.Session.get", side_effect=requests.RequestException("Connection timeout"))
 
     with pytest.raises(FAERSUrlResolutionError, match="HTTP request failed: Connection timeout"):
         resolve_faers_url("2023q4", url="https://example.com/faers.html")

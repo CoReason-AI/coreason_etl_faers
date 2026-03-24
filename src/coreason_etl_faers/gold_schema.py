@@ -20,9 +20,9 @@ def _enforce_schema(df: pl.DataFrame, expected_cols: list[str]) -> pl.DataFrame:
     if len(df) == 0:
         return pl.DataFrame(schema=dict.fromkeys(expected_cols, pl.String))
 
-    for col in expected_cols:
-        if col not in df.columns:
-            df = df.with_columns(pl.lit(None).alias(col))
+    missing_cols = [pl.lit(None).alias(col) for col in expected_cols if col not in df.columns]
+    if missing_cols:
+        df = df.with_columns(missing_cols)
 
     return df.select(expected_cols)
 
