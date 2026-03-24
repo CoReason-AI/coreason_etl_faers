@@ -30,6 +30,20 @@ class SilverManifoldManifest(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+def _write_manifold(df: pl.DataFrame, table_name: str, connection_uri: str) -> None:
+    """
+    Private helper function to conditionally persist a manifold DataFrame
+    to the database using ADBC, avoiding empty writes.
+    """
+    if len(df) > 0:
+        df.write_database(
+            table_name,
+            connection=connection_uri,
+            engine="adbc",
+            if_table_exists="replace",
+        )
+
+
 def _extract_json_fields(df: pl.DataFrame, fields: list[str]) -> pl.DataFrame:
     """
     Private helper function to safely unpack JSON fields from the Bronze layer's
@@ -40,9 +54,9 @@ def _extract_json_fields(df: pl.DataFrame, fields: list[str]) -> pl.DataFrame:
         exprs = [pl.col("data").str.json_path_match(f"$.{field}").alias(field) for field in fields]
         df = df.with_columns(exprs)
 
-    for field in fields:
-        if field not in df.columns:
-            df = df.with_columns(pl.lit(None).cast(pl.String).alias(field))
+    missing_cols = [pl.lit(None).cast(pl.String).alias(field) for field in fields if field not in df.columns]
+    if missing_cols:
+        df = df.with_columns(missing_cols)
 
     return df
 
@@ -83,18 +97,9 @@ def execute_silver_transmutation_task(connection_uri: str) -> SilverManifoldMani
     logger.info("Persisting Silver manifolds to PostgreSQL (silver schema).")
 
     # Save the transmutated frames to the postgres Silver schema
-    if len(demo_df) > 0:
-        demo_df.write_database(
-            "coreason_etl_faers_silver_demo", connection=connection_uri, engine="adbc", if_table_exists="replace"
-        )
-    if len(drug_df) > 0:
-        drug_df.write_database(
-            "coreason_etl_faers_silver_drug", connection=connection_uri, engine="adbc", if_table_exists="replace"
-        )
-    if len(reac_df) > 0:
-        reac_df.write_database(
-            "coreason_etl_faers_silver_reac", connection=connection_uri, engine="adbc", if_table_exists="replace"
-        )
+    _write_manifold(demo_df, "coreason_etl_faers_silver_demo", connection_uri)
+    _write_manifold(drug_df, "coreason_etl_faers_silver_drug", connection_uri)
+    _write_manifold(reac_df, "coreason_etl_faers_silver_reac", connection_uri)
 
     logger.info("Silver layer transmutation task completed successfully.")
     return SilverManifoldManifest(

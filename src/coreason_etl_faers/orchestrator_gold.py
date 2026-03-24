@@ -33,6 +33,20 @@ class GoldManifoldManifest(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+def _write_manifold(df: pl.DataFrame, table_name: str, connection_uri: str) -> None:
+    """
+    Private helper function to conditionally persist a manifold DataFrame
+    to the database using ADBC, avoiding empty writes.
+    """
+    if len(df) > 0:
+        df.write_database(
+            table_name,
+            connection=connection_uri,
+            engine="adbc",
+            if_table_exists="replace",
+        )
+
+
 def execute_gold_transmutation_task(
     silver_manifest: SilverManifoldManifest, connection_uri: str
 ) -> GoldManifoldManifest:
@@ -61,27 +75,9 @@ def execute_gold_transmutation_task(
 
     logger.info("Persisting Gold manifolds to PostgreSQL (gold schema).")
 
-    if len(fact_adverse_event_df) > 0:
-        fact_adverse_event_df.write_database(
-            "coreason_etl_faers_gold_fact_adverse_event",
-            connection=connection_uri,
-            engine="adbc",
-            if_table_exists="replace",
-        )
-    if len(bridge_case_drug_df) > 0:
-        bridge_case_drug_df.write_database(
-            "coreason_etl_faers_gold_bridge_case_drug",
-            connection=connection_uri,
-            engine="adbc",
-            if_table_exists="replace",
-        )
-    if len(bridge_case_reaction_df) > 0:
-        bridge_case_reaction_df.write_database(
-            "coreason_etl_faers_gold_bridge_case_reaction",
-            connection=connection_uri,
-            engine="adbc",
-            if_table_exists="replace",
-        )
+    _write_manifold(fact_adverse_event_df, "coreason_etl_faers_gold_fact_adverse_event", connection_uri)
+    _write_manifold(bridge_case_drug_df, "coreason_etl_faers_gold_bridge_case_drug", connection_uri)
+    _write_manifold(bridge_case_reaction_df, "coreason_etl_faers_gold_bridge_case_reaction", connection_uri)
 
     logger.info("Gold layer transmutation task completed successfully.")
     return GoldManifoldManifest(

@@ -78,6 +78,56 @@ def test_stream_faers_data_local_file_success(tmp_path: Path, mock_faers_zip_con
     assert results[0] == {"col1": "val1", "col2": "val2", "col3": "val3"}
 
 
+def test_stream_faers_data_local_file_url_encoded_path(tmp_path: Path, mock_faers_zip_content: bytes) -> None:
+    """Test successful streaming from a local file:// URL containing URL-encoded characters (e.g. spaces)."""
+    # Create a directory with spaces
+    spaced_dir = tmp_path / "my folder with spaces"
+    spaced_dir.mkdir()
+
+    local_file_path = spaced_dir / "test_faers.zip"
+    with open(local_file_path, "wb") as f:
+        f.write(mock_faers_zip_content)
+
+    # Use urllib.request.pathname2url to create a valid file:// URL that might contain encoded chars like %20
+    from urllib.request import pathname2url
+
+    url = f"file://{pathname2url(str(local_file_path))}"
+    target_filename = "test_file.txt"
+
+    results = list(stream_faers_data(url, target_filename))
+
+    assert len(results) == 2
+    assert results[0] == {"col1": "val1", "col2": "val2", "col3": "val3"}
+
+
+def test_stream_faers_data_nested_zip_structure(mocker: MockerFixture) -> None:
+    """Test that the smart search logic correctly finds the target file even when deeply nested inside sub-folders."""
+    mock_data = "col1\nval1"
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Create a file deeply nested in the archive
+        zf.writestr("fda_extract_2023/ascii/subfolder/test_target_file.txt", mock_data.encode("latin-1"))
+        # Create some distraction files
+        zf.writestr("fda_extract_2023/ascii/wrong_file.txt", b"wrong\nwrong")
+        zf.writestr("test_target_file.txt.bak", b"wrong\nwrong")
+
+    url = "https://example.com/faers.zip"
+    target_filename = "test_target_file.txt"
+
+    mock_response = mocker.Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_content.return_value = [zip_buffer.getvalue()]
+
+    mock_response.__enter__ = mocker.Mock(return_value=mock_response)
+    mock_response.__exit__ = mocker.Mock(return_value=None)
+    mocker.patch("requests.get", return_value=mock_response)
+
+    results = list(stream_faers_data(url, target_filename))
+
+    assert len(results) == 1
+    assert results[0] == {"col1": "val1"}
+
+
 def test_stream_faers_data_latin1_encoding(mocker: MockerFixture, mock_faers_zip_content_latin1: bytes) -> None:
     """Test that latin-1 encoding is properly decoded and parsed."""
     url = "https://example.com/faers.zip"
@@ -212,5 +262,5 @@ def test_stream_faers_data_missing_target_file(mocker: MockerFixture, mock_faers
     mock_response.__exit__ = mocker.Mock(return_value=None)
     mocker.patch("requests.get", return_value=mock_response)
 
-    with pytest.raises(KeyError, match=r"There is no item named 'missing_file.txt' in the archive"):
+    with pytest.raises(KeyError, match=r"Could not find missing_file.txt anywhere inside the ZIP archive"):
         list(stream_faers_data(url, target_filename))

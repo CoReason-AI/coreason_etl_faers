@@ -50,23 +50,21 @@ def extract_deduplicated_cases_task(
     query = f"""
     WITH ranked_cases AS (
         SELECT
-            data->>'caseid' AS caseid,
-            (data->>'primaryid')::numeric AS primaryid,
-            data
+            *,
+            ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY CAST(primaryid AS NUMERIC) DESC) as rn
         FROM {source_schema}.{source_table}
     )
-    SELECT data
-    FROM (
-        SELECT
-            data,
-            ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY primaryid DESC) as rn
-        FROM ranked_cases
-    ) sub
-    WHERE rn = 1;
+    SELECT *
+    FROM ranked_cases
+    WHERE rn = 1
     """
 
     logger.debug("Executing compute pushdown deduplication query")
-    df = pl.read_database(query, connection=connection_uri)
+    df = pl.read_database_uri(query, uri=connection_uri, engine="adbc")
+
+    # Drop the temporary ranking column
+    if "rn" in df.columns:
+        df = df.drop("rn")
 
     logger.info(f"Successfully extracted {len(df)} deduplicated rows into Polars DataFrame")
     return df
