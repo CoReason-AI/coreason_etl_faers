@@ -22,19 +22,6 @@ def extract_deduplicated_cases_task(
     AGENT INSTRUCTION: This function strictly adheres to the Compute Pushdown Deduplication requirement.
     It executes a SQL Window function against PostgreSQL to filter the most recent cases natively,
     extracting only the deduplicated dataset into a Polars DataFrame.
-
-    Extracts a deduplicated manifold of FAERS cases from the Bronze layer.
-
-    Args:
-        connection_uri: The strict URI connection string to the PostgreSQL database.
-        source_table: The target physical table name in the Bronze layer.
-        source_schema: The schema where the table resides. Defaults to 'bronze'.
-
-    Returns:
-        A Polars DataFrame representing the deduplicated case state.
-
-    Raises:
-        ValueError: If the source_table or source_schema contains invalid characters.
     """
     logger.info(f"Initiating extract_deduplicated_cases_task from table: {source_schema}.{source_table}")
 
@@ -46,12 +33,20 @@ def extract_deduplicated_cases_task(
             "Must contain only alphanumeric characters and underscores."
         )
 
+    # Context-Aware Partitioning: 
+    # Ensure child tables retain all records per caseid
+    partition_cols = "caseid"
+    if source_table.endswith("_drug"):
+        partition_cols = "caseid, drug_seq"
+    elif source_table.endswith("_reac"):
+        partition_cols = "caseid, pt"
+
     # ruff: noqa: S608
     query = f"""
     WITH ranked_cases AS (
         SELECT
             *,
-            ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY CAST(primaryid AS NUMERIC) DESC) as rn
+            ROW_NUMBER() OVER (PARTITION BY {partition_cols} ORDER BY CAST(primaryid AS NUMERIC) DESC) as rn
         FROM {source_schema}.{source_table}
     )
     SELECT *
@@ -59,7 +54,7 @@ def extract_deduplicated_cases_task(
     WHERE rn = 1
     """
 
-    logger.debug("Executing compute pushdown deduplication query")
+    logger.debug(f"Executing compute pushdown deduplication query with partition keys: {partition_cols}")
     df = pl.read_database_uri(query, uri=connection_uri, engine="adbc")
 
     # Drop the temporary ranking column
