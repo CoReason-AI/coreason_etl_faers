@@ -1,0 +1,153 @@
+# Copyright (c) 2026 CoReason Inc.
+#
+# This software is proprietary and dual-licensed.
+# Licensed under the Prosperity Public License 3.0 (the "License").
+# A copy of the license is available at https://prosperitylicense.com/versions/3.0.0
+# For details, see the LICENSE file.
+# Commercial use beyond a 30-day trial requires a separate license.
+#
+# Source Code: https://github.com/CoReason-AI/coreason_etl_faers
+
+import polars as pl
+import pytest
+from pytest_mock import MockerFixture
+
+from coreason_etl_faers.silver_deduplication import extract_deduplicated_cases_task
+
+
+def test_extract_deduplicated_cases_task_success(mocker: MockerFixture) -> None:
+    """Test standard pushdown execution successfully extracts mock Polars DataFrame."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "faers_bronze"
+    source_schema = "test_schema"
+
+    # The expected df returned from the database
+    expected_df = pl.DataFrame(
+        [
+            {"data": '{"caseid": "1", "primaryid": "100"}', "rn": 1},
+            {"data": '{"caseid": "2", "primaryid": "200"}', "rn": 1},
+        ]
+    )
+
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    result_df = extract_deduplicated_cases_task(connection_uri, source_table, source_schema)
+
+    # Validate output
+    assert len(result_df) == 2
+    assert "data" in result_df.columns
+    assert "rn" not in result_df.columns
+
+    # Validate mock parameters
+    mock_read_db.assert_called_once()
+    called_query = mock_read_db.call_args[0][0]
+    called_conn = mock_read_db.call_args[1]["uri"]
+    called_engine = mock_read_db.call_args[1]["engine"]
+
+    assert called_conn == connection_uri
+    assert called_engine == "adbc"
+    assert "ROW_NUMBER() OVER (PARTITION BY caseid ORDER BY CAST(primaryid AS NUMERIC) DESC)" in called_query
+    assert f"{source_schema}.{source_table}" in called_query
+
+
+def test_extract_deduplicated_cases_task_default_schema(mocker: MockerFixture) -> None:
+    """Test that the default 'bronze' schema is correctly applied and formatted in the SQL query."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "faers_bronze"
+
+    expected_df = pl.DataFrame([{"data": "test", "rn": 1}])
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    extract_deduplicated_cases_task(connection_uri, source_table)
+
+    mock_read_db.assert_called_once()
+    called_query = mock_read_db.call_args[0][0]
+    assert "FROM bronze.faers_bronze" in called_query
+
+
+def test_extract_deduplicated_cases_task_missing_rn_column(mocker: MockerFixture) -> None:
+    """Test resilience when the returned DataFrame unexpectedly lacks the 'rn' column."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "faers_bronze"
+
+    # Return a DataFrame without the 'rn' column to ensure the drop operation doesn't throw a KeyError
+    expected_df = pl.DataFrame({"data": ["test1", "test2"]})
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    result_df = extract_deduplicated_cases_task(connection_uri, source_table)
+
+    assert len(result_df) == 2
+    assert "rn" not in result_df.columns
+    assert result_df.equals(expected_df)
+    mock_read_db.assert_called_once()
+
+
+def test_extract_deduplicated_cases_task_empty(mocker: MockerFixture) -> None:
+    """Test standard pushdown execution successfully extracts an empty Polars DataFrame."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "empty_table"
+
+    expected_df = pl.DataFrame({"data": []}, schema={"data": pl.String})
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    result_df = extract_deduplicated_cases_task(connection_uri, source_table)
+
+    assert len(result_df) == 0
+    assert result_df.equals(expected_df)
+    mock_read_db.assert_called_once()
+
+
+def test_extract_deduplicated_cases_task_connection_error(mocker: MockerFixture) -> None:
+    """Test behavior when the database connection fails."""
+    connection_uri = "postgresql://user:pass@invalid:5432/db"
+    source_table = "faers_bronze"
+
+    mocker.patch("polars.read_database_uri", side_effect=Exception("Connection refused"))
+
+    with pytest.raises(Exception, match="Connection refused"):
+        extract_deduplicated_cases_task(connection_uri, source_table)
+
+
+def test_extract_deduplicated_cases_task_invalid_table() -> None:
+    """Test defensive validation blocks invalid table names to prevent SQL injection."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+
+    invalid_tables = [
+        "faers_bronze; DROP TABLE users;",
+        "faers-bronze",
+        "faers bronze",
+        "faers_bronze'",
+        "123_test_table_#",
+    ]
+
+    for invalid_table in invalid_tables:
+        with pytest.raises(ValueError, match="Must contain only alphanumeric characters and underscores"):
+            extract_deduplicated_cases_task(connection_uri, invalid_table)
+
+
+def test_extract_deduplicated_cases_task_drug_partition(mocker: MockerFixture) -> None:
+    """Test that the drug table partitions by caseid AND drug_seq."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "coreason_etl_faers_bronze_drug"
+    
+    expected_df = pl.DataFrame([{"caseid": "1", "drug_seq": "1", "rn": 1}])
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    extract_deduplicated_cases_task(connection_uri, source_table)
+
+    called_query = mock_read_db.call_args[0][0]
+    assert "PARTITION BY caseid, drug_seq" in called_query
+
+
+def test_extract_deduplicated_cases_task_reac_partition(mocker: MockerFixture) -> None:
+    """Test that the reaction table partitions by caseid AND pt."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "coreason_etl_faers_bronze_reac"
+    
+    expected_df = pl.DataFrame([{"caseid": "1", "pt": "HEADACHE", "rn": 1}])
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    extract_deduplicated_cases_task(connection_uri, source_table)
+
+    called_query = mock_read_db.call_args[0][0]
+    assert "PARTITION BY caseid, pt" in called_query
