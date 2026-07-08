@@ -10,6 +10,7 @@
 
 import argparse
 import os
+import datetime
 
 from coreason_etl_faers.config import FaersExtractionPolicy
 from coreason_etl_faers.orchestrator_bronze import execute_bronze_extraction_task
@@ -75,6 +76,31 @@ def build_postgres_uri_from_env() -> str:
     return f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 
+def run_historical_backfill(connection_uri: str, base_url: str, start_year: int = 2012) -> None:
+    """
+    AGENT INSTRUCTION: Iterates through all chronological quarters from 2012 to the present,
+    generating policies and executing the ETL transmutation task sequentially.
+    """
+    current_year = datetime.datetime.now().year
+    
+    for year in range(start_year, current_year + 1):
+        for q in range(1, 5):
+            quarter = f"{year}q{q}"
+            logger.info(f"========== Starting historical extraction for {quarter} ==========")
+            
+            policy = FaersExtractionPolicy(source_quarter=quarter, base_url=base_url)
+            
+            try:
+                execute_faers_etl_transmutation_task(policy, connection_uri)
+            except Exception as e:
+                # The FDA has not released future quarters yet, or a specific link might be broken.
+                # Catching the exception allows the loop to gracefully stop or skip.
+                logger.warning(f"Extraction halted or skipped for {quarter}. Reason: {e}")
+                if year == current_year:
+                    logger.info("Reached the end of published FDA quarters. Backfill complete.")
+                    return
+
+
 def main() -> None:
     """
     AGENT INSTRUCTION: Entry point for the ETL CLI.
@@ -94,13 +120,24 @@ def main() -> None:
         default="https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html",
         help="The base URL or file path for the extraction.",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Download and process all historical FAERS data from 2012 to present.",
+    )
 
     args = parser.parse_args()
-
-    policy = FaersExtractionPolicy(source_quarter=args.quarter, base_url=args.url)
     connection_uri = build_postgres_uri_from_env()
 
-    execute_faers_etl_transmutation_task(policy, connection_uri)
+    # The line we added to fix the dlt credentials issue
+    os.environ["DESTINATION__POSTGRES__CREDENTIALS"] = connection_uri
+
+    if args.all:
+        logger.info("Historical backfill flag '--all' detected. Initiating massive extraction.")
+        run_historical_backfill(connection_uri, args.url)
+    else:
+        policy = FaersExtractionPolicy(source_quarter=args.quarter, base_url=args.url)
+        execute_faers_etl_transmutation_task(policy, connection_uri)
 
 
 if __name__ == "__main__":  # pragma: no cover

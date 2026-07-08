@@ -123,3 +123,31 @@ def test_extract_deduplicated_cases_task_invalid_table() -> None:
     for invalid_table in invalid_tables:
         with pytest.raises(ValueError, match="Must contain only alphanumeric characters and underscores"):
             extract_deduplicated_cases_task(connection_uri, invalid_table)
+
+
+def test_extract_deduplicated_cases_task_drug_partition(mocker: MockerFixture) -> None:
+    """Test that the drug table partitions by caseid AND drug_seq."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "coreason_etl_faers_bronze_drug"
+    
+    expected_df = pl.DataFrame([{"caseid": "1", "drug_seq": "1", "rn": 1}])
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    extract_deduplicated_cases_task(connection_uri, source_table)
+
+    called_query = mock_read_db.call_args[0][0]
+    assert "PARTITION BY caseid, drug_seq" in called_query
+
+
+def test_extract_deduplicated_cases_task_reac_partition(mocker: MockerFixture) -> None:
+    """Test that the reaction table partitions by caseid AND pt."""
+    connection_uri = "postgresql://user:pass@localhost:5432/db"
+    source_table = "coreason_etl_faers_bronze_reac"
+    
+    expected_df = pl.DataFrame([{"caseid": "1", "pt": "HEADACHE", "rn": 1}])
+    mock_read_db = mocker.patch("polars.read_database_uri", return_value=expected_df)
+
+    extract_deduplicated_cases_task(connection_uri, source_table)
+
+    called_query = mock_read_db.call_args[0][0]
+    assert "PARTITION BY caseid, pt" in called_query
